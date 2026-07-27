@@ -285,7 +285,6 @@ def install_package(git_url: str, version_tag: str = "") -> dict:
         result["error"] = f"pip install failed:\n{pip_output}"
         return result
 
-    # Run Django migrations for the new app
     rc, migrate_output = _run_manage_py(["migrate", result["app_path"]])
     result["log"] += f"\n{migrate_output}"
     if rc != 0:
@@ -293,14 +292,12 @@ def install_package(git_url: str, version_tag: str = "") -> dict:
     else:
         log.info("Migrations applied successfully for %s", result["app_path"])
 
-    # Write to extra.toml (this is how the bot discovers packages on startup)
     _add_to_extra_toml(
         app_path=result["app_path"],
         location=git_url,
         enabled=True,
     )
 
-    # Save metadata to database
     try:
         InstalledPackage.objects.update_or_create(
             git_url=git_url,
@@ -347,7 +344,6 @@ def uninstall_package(package_id: int) -> dict:
     if clone_dir.exists():
         shutil.rmtree(clone_dir)
 
-    # Remove from extra.toml
     _remove_from_extra_toml(pkg.app_path)
 
     pkg_name = pkg.name
@@ -376,7 +372,6 @@ def enable_package(package_id: int) -> dict:
     pkg.enabled = True
     pkg.save(update_fields=["enabled", "last_updated"])
 
-    # Update extra.toml
     _toggle_extra_toml(pkg.app_path, enabled=True)
 
     _write_restart_flag(f"Enabled package: {pkg.name}")
@@ -402,7 +397,6 @@ def disable_package(package_id: int) -> dict:
     pkg.enabled = False
     pkg.save(update_fields=["enabled", "last_updated"])
 
-    # Update extra.toml
     _toggle_extra_toml(pkg.app_path, enabled=False)
 
     _write_restart_flag(f"Disabled package: {pkg.name}")
@@ -457,7 +451,6 @@ def update_package(package_id: int) -> dict:
         pkg.dpy_package_path = app["dpy_package_path"]
         pkg.name = app["name"]
 
-    # Run Django migrations for the updated app
     rc, migrate_output = _run_manage_py(["migrate", pkg.app_path])
     result["log"] += f"\n{migrate_output}"
     if rc != 0:
@@ -511,14 +504,12 @@ def import_legacy_packages() -> int:
         if not app_path:
             continue
 
-        # Skip if already tracked in DB
         if InstalledPackage.objects.filter(app_path=app_path).exists():
             continue
 
         git_url = entry.get("location", "")
         enabled = entry.get("enabled", True)
 
-        # Try to discover dpy_package from the loaded app config
         dpy_package = ""
         name = app_path.replace("_", " ").title()
         try:

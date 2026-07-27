@@ -128,23 +128,18 @@ class InstalledPackageAdmin(admin.ModelAdmin):
 
     def get_actions(self, request: HttpRequest) -> dict:
         actions = super().get_actions(request)
-        # Deleting only the database record leaves the installed distribution,
-        # cloned repository, and extra.toml entry behind.  Packages must be
-        # removed through ``action_uninstall`` instead.
         actions.pop("delete_selected", None)
         return actions
 
     def has_add_permission(self, request: HttpRequest) -> bool:
-        return False  # Use the custom "Install New Package" view instead
+        return False 
 
     def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
         return request.user.is_superuser
 
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
-        # Prevent the object delete view from bypassing uninstall cleanup.
         return False
 
-    # Custom actions
     actions = ("action_enable", "action_disable", "action_uninstall", "action_update")
 
     @staticmethod

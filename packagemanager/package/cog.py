@@ -59,9 +59,6 @@ class RestartWatcher(commands.Cog):
                         RESTART_FLAG.unlink()
                     except OSError:
                         pass
-                    # Graceful shutdown - the process manager (systemd, Docker, etc.)
-                    # will restart the bot. For manual setups, the user can use
-                    # `os.execv` to re-exec.
                     await self.bot.close()
                     sys.exit(0)
             except asyncio.CancelledError:
