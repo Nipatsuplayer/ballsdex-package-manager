@@ -23,6 +23,11 @@ class RestartWatcher(commands.Cog):
         self._watcher_task: asyncio.Task | None = None
 
     async def cog_load(self) -> None:
+        # Clear any leftover restart flag from a previous failed/crashed install
+        try:
+            RESTART_FLAG.unlink(missing_ok=True)
+        except OSError:
+            pass
         self._watcher_task = asyncio.create_task(self._watch_loop())
         log.info("Restart watcher started.")
 
@@ -35,9 +40,9 @@ class RestartWatcher(commands.Cog):
     @commands.is_owner()
     async def reloadextra(self, ctx: commands.Context) -> None:
         """Reload the extra.toml file."""
-        from ..services import import_legacy_packages
+        from ..services import import_packages_from_extra_toml
 
-        count = import_legacy_packages()
+        count = import_packages_from_extra_toml()
         if count:
             log.info("Imported %d package(s) from extra.toml", count)
             await ctx.send(f"Imported {count} package(s).")

@@ -43,11 +43,10 @@ class InstalledPackageAdmin(admin.ModelAdmin):
         "name",
         "app_path",
         "enabled_display",
-        "is_legacy",
         "installed_at",
         "actions_display",
     )
-    list_filter = ("enabled", "is_legacy")
+    list_filter = ("enabled",)
     readonly_fields = (
         "git_url",
         "name",
@@ -138,7 +137,38 @@ class InstalledPackageAdmin(admin.ModelAdmin):
         return request.user.is_superuser
 
     def has_delete_permission(self, request: HttpRequest, obj=None) -> bool:
-        return False
+        return request.user.is_superuser
+
+    def save_model(self, request: HttpRequest, obj: InstalledPackage, form: forms.ModelForm, change: bool) -> None:
+        if change:
+            old = InstalledPackage.objects.get(pk=obj.pk)
+            version_changed = old.version_tag != obj.version_tag
+        else:
+            version_changed = False
+
+        super().save_model(request, obj, form, change)
+
+        if version_changed:
+            result = update_package(obj.pk)
+            if result["success"]:
+                self.message_user(
+                    request,
+                    f"Updated '{obj.name}' to version '{obj.version_tag or 'latest'}'. Bot will restart automatically.",
+                    messages.SUCCESS,
+                )
+            else:
+                self.message_user(request, f"{obj.name}: {result['error']}", messages.ERROR)
+
+    def delete_model(self, request: HttpRequest, obj: InstalledPackage) -> None:
+        result = uninstall_package(obj.id)
+        if not result["success"]:
+            self.message_user(request, f"{obj.name}: {result['error']}", messages.ERROR)
+
+    def delete_queryset(self, request: HttpRequest, queryset: "QuerySet[InstalledPackage]") -> None:
+        for pkg in queryset:
+            result = uninstall_package(pkg.id)
+            if not result["success"]:
+                self.message_user(request, f"{pkg.name}: {result['error']}", messages.WARNING)
 
     actions = ("action_enable", "action_disable", "action_uninstall", "action_update")
 

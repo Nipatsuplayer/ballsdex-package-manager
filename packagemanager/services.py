@@ -59,13 +59,24 @@ def _run_manage_py(args: list[str], cwd: str | None = None) -> tuple[int, str]:
     """Run a Django manage.py command."""
     if cwd is None:
         cwd = str(EXTRA_DIR.parent / "admin_panel")
-    cmd = [sys.executable, os.path.join(cwd, "manage.py")] + args
+    manage_py = os.path.join(cwd, "manage.py")
+    if not os.path.exists(manage_py):
+        return 1, f"manage.py not found at {manage_py}"
+
+    cmd = [sys.executable, manage_py] + args
     log.info("Running: %s", " ".join(cmd))
+
+    env = os.environ.copy()
+    toml_path = _get_extra_toml_path()
+    if toml_path:
+        env["BALLSDEXBOT_EXTRA_TOML"] = str(toml_path)
+
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         cwd=cwd,
+        env=env,
         timeout=120,
     )
     output = result.stdout + "\n" + result.stderr
@@ -243,6 +254,8 @@ def install_package(git_url: str, version_tag: str = "") -> dict:
     if not git_url.endswith(".git"):
         git_url = git_url + ".git"
 
+    version_tag = version_tag.lstrip("@").strip() if version_tag else ""
+
     repo_name = _repo_name_from_url(git_url)
     clone_dir = EXTRA_DIR / repo_name
 
@@ -285,18 +298,24 @@ def install_package(git_url: str, version_tag: str = "") -> dict:
         result["error"] = f"pip install failed:\n{pip_output}"
         return result
 
-    rc, migrate_output = _run_manage_py(["migrate", result["app_path"]])
-    result["log"] += f"\n{migrate_output}"
-    if rc != 0:
-        log.warning("migrate failed (app will work after manual 'python manage.py migrate'):\n%s", migrate_output)
-    else:
-        log.info("Migrations applied successfully for %s", result["app_path"])
-
     _add_to_extra_toml(
         app_path=result["app_path"],
         location=git_url,
         enabled=True,
     )
+
+    rc, migrate_output = _run_manage_py(["migrate", result["app_path"]])
+    result["log"] += f"\n{migrate_output}"
+    if rc != 0:
+        migrate_cmd = f"cd {EXTRA_DIR.parent / 'admin_panel'} && python manage.py migrate {result['app_path']}"
+        log.warning(
+            "Auto-migrate failed. Run this command after restart:\n  %s\nOutput: %s",
+            migrate_cmd,
+            migrate_output,
+        )
+        result["log"] += f"\n\nMigrations could not be applied automatically. After restart, run:\n  {migrate_cmd}"
+    else:
+        log.info("Migrations applied successfully for %s", result["app_path"])
 
     try:
         InstalledPackage.objects.update_or_create(
@@ -328,10 +347,6 @@ def uninstall_package(package_id: int) -> dict:
         pkg = InstalledPackage.objects.get(id=package_id)
     except InstalledPackage.DoesNotExist:
         result["error"] = "Package not found."
-        return result
-
-    if pkg.is_legacy:
-        result["error"] = "Cannot uninstall a legacy package. Edit config/extra.toml instead."
         return result
 
     rc, output = _run_pip(["uninstall", pkg.app_path, "-y"])
@@ -416,10 +431,6 @@ def update_package(package_id: int) -> dict:
         result["error"] = "Package not found."
         return result
 
-    if pkg.is_legacy:
-        result["error"] = "Cannot update a legacy package."
-        return result
-
     repo_name = _repo_name_from_url(pkg.git_url)
     clone_dir = EXTRA_DIR / repo_name
 
@@ -427,15 +438,26 @@ def update_package(package_id: int) -> dict:
         result["error"] = "Package directory not found. Try reinstalling."
         return result
 
-    pull_args = ["pull"]
-    if pkg.version_tag:
-        pull_args = ["pull", "origin", pkg.version_tag]
+    tag = pkg.version_tag.lstrip("@").strip() if pkg.version_tag else ""
 
-    rc, output = _run_git(pull_args, cwd=str(clone_dir))
-    if rc != 0:
-        result["error"] = f"git pull failed:\n{output}"
-        result["log"] = output
-        return result
+    if tag:
+        rc, output = _run_git(["fetch", "--all", "--tags"], cwd=str(clone_dir))
+        if rc != 0:
+            result["error"] = f"git fetch failed:\n{output}"
+            result["log"] = output
+            return result
+
+        rc, output = _run_git(["checkout", tag], cwd=str(clone_dir))
+        if rc != 0:
+            result["error"] = f"Could not checkout version '{tag}':\n{output}"
+            result["log"] = output
+            return result
+    else:
+        rc, output = _run_git(["pull"], cwd=str(clone_dir))
+        if rc != 0:
+            result["error"] = f"git pull failed:\n{output}"
+            result["log"] = output
+            return result
 
     rc, pip_output = _run_pip(["install", str(clone_dir)])
     result["log"] = output + "\n" + pip_output
@@ -451,10 +473,22 @@ def update_package(package_id: int) -> dict:
         pkg.dpy_package_path = app["dpy_package_path"]
         pkg.name = app["name"]
 
+    _add_to_extra_toml(
+        app_path=pkg.app_path,
+        location=pkg.git_url,
+        enabled=pkg.enabled,
+    )
+
     rc, migrate_output = _run_manage_py(["migrate", pkg.app_path])
     result["log"] += f"\n{migrate_output}"
     if rc != 0:
-        log.warning("migrate failed after update (app will work after manual 'python manage.py migrate'):\n%s", migrate_output)
+        migrate_cmd = f"cd {EXTRA_DIR.parent / 'admin_panel'} && python manage.py migrate {pkg.app_path}"
+        log.warning(
+            "Auto-migrate failed. Run this command after restart:\n  %s\nOutput: %s",
+            migrate_cmd,
+            migrate_output,
+        )
+        result["log"] += f"\n\nMigrations could not be applied automatically. After restart, run:\n  {migrate_cmd}"
     else:
         log.info("Migrations applied successfully for %s", pkg.app_path)
 
@@ -476,11 +510,10 @@ def _write_restart_flag(reason: str = "") -> None:
         log.exception("Failed to write restart flag")
 
 
-def import_legacy_packages() -> int:
+def import_packages_from_extra_toml() -> int:
     """Sync packages from config/extra.toml into the database.
 
     Creates InstalledPackage records for any extra.toml entries not yet in the DB.
-    These are marked as is_legacy=True.
 
     Returns the number of new records created.
     """
@@ -524,14 +557,13 @@ def import_legacy_packages() -> int:
             pass
 
         InstalledPackage.objects.create(
-            git_url=git_url or f"legacy://{app_path}",
+            git_url=git_url or f"file://{app_path}",
             name=name,
             app_path=app_path,
             dpy_package_path=dpy_package,
             enabled=enabled,
-            is_legacy=True,
         )
         created += 1
-        log.info("Imported legacy package: %s", app_path)
+        log.info("Imported package from extra.toml: %s", app_path)
 
     return created

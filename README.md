@@ -2,6 +2,14 @@
 
 A 3rd party package for [BallsDex](https://github.com/Ballsdex-Team/BallsDex-DiscordBot) that provides a web-based admin panel interface for installing, managing, and removing 3rd party packages. No more editing `config/extra.toml` manually!
 
+> [!WARNING]
+> **This package is currently considered experimental.**
+>
+> While it has been tested and works as intended, it has not yet been extensively tested in a wide variety of production environments. Unexpected bugs or instability may still occur, especially when installing or managing complex third-party packages.
+>
+> Please make regular backups of your bot and database before using this package in production.
+
+
 ## Features
 
 - **Install packages** from git repositories via the admin panel

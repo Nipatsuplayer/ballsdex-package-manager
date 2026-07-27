@@ -24,10 +24,6 @@ class InstalledPackage(models.Model):
         default=True,
         help_text="Whether this package is currently enabled",
     )
-    is_legacy = models.BooleanField(
-        default=False,
-        help_text="Imported from config/extra.toml, not managed by this panel",
-    )
     installed_at = models.DateTimeField(auto_now_add=True)
     last_updated = models.DateTimeField(auto_now=True)
     version_tag = models.CharField(
