@@ -67,6 +67,26 @@ class InstalledPackageAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.install_view),
                 name="packagemanager_install",
             ),
+            path(
+                "<int:pk>/update/",
+                self.admin_site.admin_view(self.update_view),
+                name="packagemanager_update",
+            ),
+            path(
+                "<int:pk>/enable/",
+                self.admin_site.admin_view(self.enable_view),
+                name="packagemanager_enable",
+            ),
+            path(
+                "<int:pk>/disable/",
+                self.admin_site.admin_view(self.disable_view),
+                name="packagemanager_disable",
+            ),
+            path(
+                "<int:pk>/uninstall/",
+                self.admin_site.admin_view(self.uninstall_view),
+                name="packagemanager_uninstall",
+            ),
         ]
         return custom_urls + super().get_urls()
 
@@ -119,11 +139,58 @@ class InstalledPackageAdmin(admin.ModelAdmin):
     enabled_display.short_description = "Enabled"
 
     def actions_display(self, obj: InstalledPackage) -> str:
-        return mark_safe(
-            '<span style="pointer-events: none; color: #999;">-</span>'
+        bits = []
+        bits.append(
+            f'<a class="button" style="font-size:11px;padding:2px 6px;margin:1px;" '
+            f'href="{obj.pk}/update/" title="Update to latest">Update</a>'
         )
+        if self._is_core_package(obj):
+            bits.append(
+                '<span style="font-size:11px;padding:2px 6px;color:#999;">Core</span>'
+            )
+        else:
+            if obj.enabled:
+                bits.append(
+                    f'<a class="button" style="font-size:11px;padding:2px 6px;margin:1px;" '
+                    f'href="{obj.pk}/disable/" title="Disable package">Disable</a>'
+                )
+            else:
+                bits.append(
+                    f'<a class="button" style="font-size:11px;padding:2px 6px;margin:1px;" '
+                    f'href="{obj.pk}/enable/" title="Enable package">Enable</a>'
+                )
+            bits.append(
+                f'<a class="button" style="font-size:11px;padding:2px 6px;margin:1px;background:#ba2121;" '
+                f'href="{obj.pk}/uninstall/" title="Uninstall package">Uninstall</a>'
+            )
+        return mark_safe(" ".join(bits))
 
     actions_display.short_description = "Actions"
+
+    def _handle_action(self, request: HttpRequest, pk: int, action_func, success_msg: str):
+        try:
+            obj = InstalledPackage.objects.get(pk=pk)
+        except InstalledPackage.DoesNotExist:
+            self.message_user(request, "Package not found.", messages.ERROR)
+            return redirect("admin:packagemanager_installedpackage_changelist")
+        result = action_func(obj.id)
+        if result["success"]:
+            self.message_user(request, f"{obj.name}: {success_msg}", messages.SUCCESS)
+        else:
+            self.message_user(request, f"{obj.name}: {result['error']}", messages.ERROR)
+        return redirect("admin:packagemanager_installedpackage_changelist")
+
+    def update_view(self, request: HttpRequest, pk: int):
+        return self._handle_action(request, pk, update_package, "Updated. Bot will restart automatically.")
+
+    def enable_view(self, request: HttpRequest, pk: int):
+        return self._handle_action(request, pk, enable_package, "Enabled. Bot will restart automatically.")
+
+    def disable_view(self, request: HttpRequest, pk: int):
+        return self._handle_action(request, pk, disable_package, "Disabled. Bot will restart automatically.")
+
+    def uninstall_view(self, request: HttpRequest, pk: int):
+        return self._handle_action(request, pk, uninstall_package, "Uninstalled. Bot will restart automatically.")
 
     def get_actions(self, request: HttpRequest) -> dict:
         actions = super().get_actions(request)
