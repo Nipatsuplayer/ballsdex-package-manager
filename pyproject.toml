@@ -1,0 +1,21 @@
+[project]
+name = "ballsdex-packagemanager"
+version = "1.0.0"
+
+description = "Package manager for BallsDex - install and manage 3rd party packages from the admin panel"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Nipatsuplayer" },
+]
+readme = "README.md"
+
+dependencies = [
+    "ballsdex>=3.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/Nipatsuplayer/ballsdex-package-manager"
+
+[tool.setuptools.package-data]
+packagemanager = ["templates/**/*.html"]

@@ -1,0 +1,54 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title }}{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <form method="post">
+        {% csrf_token %}
+
+        <fieldset class="module aligned">
+            <h2>Install New Package</h2>
+            <p>Enter the git repository URL of the BallsDex package you want to install.</p>
+
+            {% if form.errors %}
+            <div class="errornote">
+                Please correct the errors below.
+            </div>
+            {% endif %}
+
+            {% for field in form %}
+            <div class="form-row{% if field.errors %} errors{% endif %}">
+                <div>
+                    {{ field.label_tag }}
+                    {{ field }}
+                    {% if field.help_text %}
+                    <p class="help">{{ field.help_text }}</p>
+                    {% endif %}
+                    {% for error in field.errors %}
+                    <p class="errornote">{{ error }}</p>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </fieldset>
+
+        <div class="submit-row">
+            <input type="submit" value="Install Package" class="default" />
+            <a href="{% url 'admin:packagemanager_installedpackage_changelist' %}" class="button cancel-link">Cancel</a>
+        </div>
+    </form>
+</div>
+
+<style>
+    .submit-row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    .cancel-link {
+        color: #999;
+    }
+</style>
+{% endblock %}
