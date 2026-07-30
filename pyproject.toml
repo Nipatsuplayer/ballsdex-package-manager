@@ -11,10 +11,6 @@ authors = [
 ]
 readme = "README.md"
 
-dependencies = [
-    "ballsdex>=3.0.0",
-]
-
 [project.urls]
 Homepage = "https://github.com/Nipatsuplayer/ballsdex-package-manager"
 
